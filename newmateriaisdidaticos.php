@@ -1,0 +1,540 @@
+<?php
+	require_once "inicioblocopadrao.php";
+	require_once "mclassgrid.php";
+
+	$CodigoPrefeitura = Utility::getCodigoPrefeitura();
+	$msg = "";
+
+	if (!Utility::authentication()) {
+		Utility::redirect("index.php");
+	}
+
+	if (!isset($_GET['acao'])) {
+		Utility::redirect("index.php");
+	}
+
+	if (($_GET['acao'] == "editar") && ((!isset($_GET['uuid'])) || (!isset($_GET['id'])))) {
+		Utility::redirect("index.php");
+	}
+
+	global $PER_CADASTROMATERIAISDIDATICOS;
+	if (!$utility->usuarioPermissao($PER_CADASTROMATERIAISDIDATICOS)) {
+		$utility->gravaLogUsuario($TLU_ACESSOINVALIDO, "Tela: Novo/Editar de Materiais Didáticos - 1");
+		Utility::redirect("acessonegado.php");
+	}
+
+	$acao = $_GET['acao'];
+	$textoacao = Utility::getTextoAcao($acao);
+
+	if (isset($_GET['subacao'])) {
+		$subacao = $_GET['subacao'];
+	} else {
+		$subacao = "";
+	}
+
+	$cad = new MCLASSGrid();
+	$cad->arqlis = "cadmateriaisdidaticos.php";
+	$cad->arqedt = "newmateriaisdidaticos.php";
+
+	function getDados() {
+		foreach($_POST as $key =>$val) {
+			if (substr($key, 0, 4) == 'mdi_') {
+				global $$key;
+				$$key = Utility::maiuscula(trim($val));
+			}
+		}
+		return;
+	}
+
+	function formataDados() {
+		global $mdi_gmd_codigo, $mdi_umd_codigo, $mdi_estoque, $mdi_estoqueminimo;
+		if ((Utility::Vazio($mdi_gmd_codigo)) || ($mdi_gmd_codigo == "0")) {
+			$mdi_gmd_codigo = 'NULL';
+		}
+
+		if ((Utility::Vazio($mdi_umd_codigo)) || ($mdi_umd_codigo == "0")) {
+			$mdi_umd_codigo = 'NULL';
+		}
+
+		$mdi_estoque       = Utility::formataNumeroMySQL($mdi_estoque);
+		$mdi_estoqueminimo = Utility::formataNumeroMySQL($mdi_estoqueminimo);
+		return;
+	}
+
+	function validaDados() {
+		global $msg, $utility, $mdi_nome, $mdi_codigo;
+		$msg = "";
+
+		//Nome
+		if (Utility::Vazio($mdi_nome)) {
+			$msg = "Nome do Material Didático Inválido";
+		}
+		//if ((Utility::Vazio($msg)) && (strlen($mdi_nome) < 10)) {
+		//	$msg = "Nome do Material Didático Inválido(Poucos caracteres)";
+		//}
+		if ((Utility::Vazio($msg)) && ($utility->verificaNomeCadastroExiste($mdi_nome, $mdi_codigo, "materiaisdidaticos"))) {
+			$msg = "Nome do Material Didático Já Existe no Cadastro";
+		}
+		return;
+	}
+
+	function setRedirect() {
+		global $cad, $uuid, $id, $VALBTNSALVARNOVO, $VALBTNSALVARSAIR, $VALBTNSALVAR;
+
+		if ((isset($_GET['btnsalvar'])) && ($_GET['btnsalvar'] == $VALBTNSALVARNOVO)) {
+			Utility::redirect($cad->arqedt."?acao=inserir");
+		}
+
+		if ((isset($_GET['btnsalvar'])) && ($_GET['btnsalvar'] == $VALBTNSALVARSAIR)) {
+			Utility::redirect($cad->arqlis);
+		}
+
+		if ((isset($_GET['btnsalvar'])) && ($_GET['btnsalvar'] == $VALBTNSALVAR)) {
+			Utility::redirect($cad->arqedt."?acao=editar&uuid=".$uuid."&id=".$id);
+		}
+		Utility::redirect($cad->arqlis);
+	}
+
+	//Inserir
+	if ($_GET['acao'] == "inserir") {
+		global $PER_CADASTROMATERIAISDIDATICOSINSERIR;
+		if (!$utility->usuarioPermissao($PER_CADASTROMATERIAISDIDATICOSINSERIR)) {
+			Utility::setMsgPopup("Você não tem acesso a inserir Material Didático!", "danger");
+			Utility::redirect($cad->arqlis);
+		}
+
+		$uuid = "";
+	    $id   = "";
+
+		//Campos
+		$mdi_codigo                = "";
+		$mdi_nome                  = "";
+		$mdi_gmd_codigo            = "";
+		$mdi_umd_codigo            = "";
+		$mdi_estoque               = "";
+		$mdi_estoqueminimo         = "";
+		$mdi_indicacao             = "";
+		$mdi_controlarlotevalidade = 0;
+		$mdi_ativo                 = 1;
+		$mdi_datacadastro          = "";
+        $mdi_usu_cadastro          = "";
+        $mdi_dataalteracao         = "";
+        $mdi_usu_alteracao         = "";
+
+		//Inserir - Salvar
+		if ((isset($_POST['mdi_nome'])) && ($subacao == "salvar")) {
+			getDados();
+			validaDados();
+
+			//Salvar se não possui aviso
+			if (Utility::Vazio($msg)) {
+				formataDados();
+
+				$UltimoCodigo  = $utility->getProximoCodigoTabela("materiaisdidaticos");
+				$UsuarioLogado = Utility::getUsuarioLogado();
+				$UsuarioLogado = Utility::ZeroToNull($UsuarioLogado);
+				$DataHoraHoje  = $utility->getDataHora();
+
+				$id   = $UltimoCodigo;
+				$uuid = Utility::gen_uuid();
+
+				$params = array();
+				array_push($params, array('name'=>'mdi_codigo',               'value'=>$id,                       'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_pre_codigo',           'value'=>$CodigoPrefeitura,         'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_uuid',                 'value'=>$uuid,                     'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_usu_cadastro',         'value'=>$UsuarioLogado,            'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_datacadastro',         'value'=>$DataHoraHoje,             'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_nome',                 'value'=>$mdi_nome,                 'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_gmd_codigo',           'value'=>$mdi_gmd_codigo,           'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_umd_codigo',           'value'=>$mdi_umd_codigo,           'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_estoque',              'value'=>$mdi_estoque,              'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_estoqueminimo',        'value'=>$mdi_estoqueminimo,        'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_indicacao',            'value'=>$mdi_indicacao,            'type'=>PDO::PARAM_STR));
+				array_push($params, array('name'=>'mdi_controlarlotevalidade','value'=>$mdi_controlarlotevalidade,'type'=>PDO::PARAM_INT));
+				array_push($params, array('name'=>'mdi_ativo',                'value'=>$mdi_ativo,                'type'=>PDO::PARAM_INT));
+
+				$sql = Utility::geraSQLINSERT("materiaisdidaticos", $params);
+
+				if ($utility->executeSQL($sql, $params, true, true, true)) {
+					Utility::setMsgPopup("Dados Inseridos com Sucesso", "success");
+					setRedirect();
+				} else {
+					$msg = "Problema na inserção dos dados";
+				}
+			}
+		}
+	}
+
+	//Alterar
+	if ($_GET['acao'] == "editar") {
+		$uuid = $_GET['uuid'];
+	    $id   = $_GET['id'];
+
+		//Carrega Dados
+		$sql = "SELECT c.* FROM materiaisdidaticos c
+				WHERE c.mdi_pre_codigo = :CodigoPrefeitura
+				AND   c.mdi_codigo     = :id
+				AND   c.mdi_uuid       = :uuid";
+
+		$numrows = 0;
+		$params = array();
+		array_push($params, array('name'=>'CodigoPrefeitura','value'=>$CodigoPrefeitura,'type'=>PDO::PARAM_INT));
+		array_push($params, array('name'=>'id',              'value'=>$id,              'type'=>PDO::PARAM_INT));
+		array_push($params, array('name'=>'uuid',            'value'=>$uuid,            'type'=>PDO::PARAM_STR));
+
+		$objQry = $utility->querySQL($sql, $params, true, $numrows);
+
+		if ($numrows != 1) {
+			$utility->gravaLogUsuario($TLU_ACESSOINVALIDO, "Tela: Novo/Editar de Materiais Didáticos - 2");
+			Utility::redirect("acessonegado.php");
+		}
+
+		$row = $objQry->fetch(PDO::FETCH_OBJ);
+
+		for ($i = 0; $i < $objQry->columnCount(); ++$i) {
+			$col = $objQry->getColumnMeta($i);
+			$field = $col['name'];
+			$$field = Utility::maiuscula(trim($row->$field));
+		}
+
+		//Alterar - Salvar
+		if ((isset($_POST['mdi_nome'])) && ($subacao == "salvar")) {
+			global $PER_CADASTROMATERIAISDIDATICOSALTERAR;
+			if (!$utility->usuarioPermissao($PER_CADASTROMATERIAISDIDATICOSALTERAR)) {
+				Utility::setMsgPopup("Você não tem acesso a alterar Material Didático!", "danger");
+				Utility::redirect($cad->arqlis);
+			}
+
+			getDados();
+			validaDados();
+
+			//Salvar se não possui aviso
+			if (Utility::Vazio($msg)) {
+				formataDados();
+
+				$UsuarioLogado = Utility::getUsuarioLogado();
+				$UsuarioLogado = Utility::ZeroToNull($UsuarioLogado);
+				$DataHoraHoje  = $utility->getDataHora();
+
+				$params = array();
+				array_push($params, array('name'=>'mdi_nome',                 'value'=>$mdi_nome,                 'type'=>PDO::PARAM_STR,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_gmd_codigo',           'value'=>$mdi_gmd_codigo,           'type'=>PDO::PARAM_INT,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_umd_codigo',           'value'=>$mdi_umd_codigo,           'type'=>PDO::PARAM_INT,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_estoque',              'value'=>$mdi_estoque,              'type'=>PDO::PARAM_STR,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_estoqueminimo',        'value'=>$mdi_estoqueminimo,        'type'=>PDO::PARAM_STR,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_indicacao',            'value'=>$mdi_indicacao,            'type'=>PDO::PARAM_STR,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_controlarlotevalidade','value'=>$mdi_controlarlotevalidade,'type'=>PDO::PARAM_INT,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_ativo',                'value'=>$mdi_ativo,                'type'=>PDO::PARAM_INT,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_usu_alteracao',        'value'=>$UsuarioLogado,            'type'=>PDO::PARAM_INT,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_dataalteracao',        'value'=>$DataHoraHoje,             'type'=>PDO::PARAM_STR,'operador'=>'SET'));
+				array_push($params, array('name'=>'mdi_pre_codigo',           'value'=>$CodigoPrefeitura,         'type'=>PDO::PARAM_INT,'operador'=>'WHERE'));
+				array_push($params, array('name'=>'mdi_uuid',                 'value'=>$uuid,                     'type'=>PDO::PARAM_STR,'operador'=>'WHERE'));
+				array_push($params, array('name'=>'mdi_codigo',               'value'=>$id,                       'type'=>PDO::PARAM_INT,'operador'=>'WHERE'));
+
+				$sql = Utility::geraSQLUPDATE("materiaisdidaticos", $params);
+
+				if ($utility->executeSQL($sql, $params, true, true, true)) {
+					Utility::setMsgPopup("Dados Alterados com Sucesso", "success");
+					setRedirect();
+				} else {
+					$msg = "Problema na atualização dos dados";
+				}
+			}
+
+		}
+	}
+?>
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD Xhtml 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title><?php echo $utility->getTitle(); ?></title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<link rel="shortcut icon" type="image/ico" href="imagens/faviconsocialweb.ico"/>
+<link href="css/estilos.css" rel="stylesheet"/>
+<script src="js/funcoesjs.js" type="text/javascript"></script>
+
+<!-- JQuery v3.6.0 -->
+<link href="jquery3.6.0/css/redmond/jquery-ui-1.12.1.css" rel="stylesheet"/>
+<script src="jquery3.6.0/js/jquery-3.6.0.js"     type="text/javascript"></script>
+<script src="jquery3.6.0/js/jquery-ui-1.12.1.js" type="text/javascript"></script>
+<script src="js/jquery.mask.js"                  type="text/javascript"></script>
+<script src="js/jquery.validate.js"              type="text/javascript"></script>
+<script src="js/my_jquery.js"                    type="text/javascript"></script>
+<script src="js/jquery.maskMoney.js"             type="text/javascript"></script>
+<!-- JQuery v3.6.0 -->
+
+<link rel="stylesheet" href="css/select2.min.css">
+<link rel="stylesheet" href="css/select2-bootstrap.css">
+<script src="js/select2.full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+$(function() {
+
+//$('#idnewform').validate();
+
+$("input").keyup(function(e) {
+	inputMaiusculo($(this), e);
+});
+
+$("#content input, #content textarea, #content select").focus(function() {
+	$(this).addClass("active"),$(this).parents().filter("fieldset").addClass("active");
+});
+
+$("#content input, #content textarea, #content select").blur(function() {
+	$(this).removeClass("active"),$(this).parents().filter("fieldset").removeClass("active");
+});
+
+$("#mdi_nome").focus();
+
+});
+</script>
+
+</head>
+<body>
+<?php require_once "mensagempopup.php"; ?>
+
+<?php require_once "noscriptjs.php"; ?>
+
+<div id="principal2">
+<div id="tudo2">
+
+		<!-- cabecalho -->
+		<div id="cabecalho2">
+			<?php require_once "cabecalho_interno.php"; ?>
+		</div>
+
+<div id="conteudo2">
+
+<div style="height:29px;font: bold 12px Verdana;background:#1C5A80;width:100%;">
+<?php require_once "cabecalhousuario.php"; ?>
+<br style="clear:left"/>
+</div>
+
+	 <!-- coluna1 -->
+     <div id="coluna1">
+     	<div class="margemInterna">
+			<?php require_once "menu.php"; ?>
+		</div>
+	</div>
+
+	<!-- coluna22 -->
+    <div id="coluna22">
+      <div class="margemInterna">
+		<div class="titulosPag">Cadastro de Materiais Didáticos<?php echo $textoacao; ?></div>
+		<br/>
+
+
+<div align="left">
+<div id="content">
+<form name="idnewform" id="idnewform" method="post" action="<?php echo $cad->arqedt."?acao=".$acao."&subacao=salvar&id=".$id."&uuid=".$uuid; ?>">
+<fieldset style="width:730px;" class="classfieldset1">
+   <legend class="classlegend1">Dados do Material Didático</legend>
+
+<div align="center">
+<?php if (!Utility::Vazio($msg)) { ?>
+<p/>
+<div class="ui-widget" id="aviso" style="margin-left: 20px;overflow:auto;">
+	<div class="ui-state-error ui-corner-all" style="float:left;width:500px">
+		<p style="text-align:left;"/><span class="ui-icon ui-icon-alert" style="float:left;"></span>
+		&nbsp;<?php echo $msg; ?>
+		<p/>
+	</div>
+</div><p/>
+<?php } ?>
+</div>
+
+<table border="0" width="100%" cellspacing="10" cellpadding="0" align="center">
+ <tr>
+  <td align="left">
+    <label class="classlabel1">Código do Material Didático:&nbsp;</label>
+  	<input type="text" maxlength="100" name="mdi_codigo" id="mdi_codigo" disabled="disabled" class="classinput1" style="width:150px;text-align:right;background-color:#bcbcbc;" value="<?php echo $mdi_codigo; ?>">
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+    <label class="classlabel1">Nome do Material Didático:&nbsp;<label class="labelasterisco">*&nbsp;</label></label>
+  	<input type="text" maxlength="50" name="mdi_nome" id="mdi_nome" class="classinput1 inputobrigatorio" style="width:450px" value="<?php echo $mdi_nome; ?>">
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+	<label class="classlabel1">Ativo:&nbsp;</label>
+	<br/>
+	<table border="0" width="100px" align="left">
+	<tr>
+		<td><input id="mdi_ativo" name="mdi_ativo" type="radio" value="1" <?php if ($mdi_ativo == 1) echo "checked"; ?> class="estiloradio"></td>
+		<td><label>Sim</label></td>
+		<td><input id="mdi_ativo" name="mdi_ativo" type="radio" value="0" <?php if ($mdi_ativo == 0) echo "checked"; ?> class="estiloradio"></td>
+		<td><label>Não</label></td>
+	</tr>
+	</table>
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+	<label class="classlabel1">Controlar Lote/Validade:&nbsp;</label>
+	<br/>
+	<table border="0" width="100px" align="left">
+	<tr>
+		<td><input id="mdi_controlarlotevalidade" name="mdi_controlarlotevalidade" type="radio" value="1" <?php if ($mdi_controlarlotevalidade == 1) echo "checked"; ?> class="estiloradio"></td>
+		<td><label>Sim</label></td>
+		<td><input id="mdi_controlarlotevalidade" name="mdi_controlarlotevalidade" type="radio" value="0" <?php if ($mdi_controlarlotevalidade == 0) echo "checked"; ?> class="estiloradio"></td>
+		<td><label>Não</label></td>
+	</tr>
+	</table>
+  </td>
+ </tr>
+
+ <tr>
+ <td align="left">
+    <label class="classlabel1">Grupo de Material Didático:&nbsp;</label>
+  	<select name="mdi_gmd_codigo" id="mdi_gmd_codigo" style="width:463px" class="selectform">
+		<option value="0" selected="selected"></option>
+		<?php
+			$CodigoPrefeitura = Utility::getCodigoPrefeitura();
+			$sql = "SELECT g.gmd_codigo, g.gmd_nome FROM gruposmateriaisdidaticos g
+					WHERE g.gmd_pre_codigo = :CodigoPrefeitura
+					ORDER BY g.gmd_nome";
+			$params = array();
+			array_push($params, array('name'=>'CodigoPrefeitura','value'=>$CodigoPrefeitura,'type'=>PDO::PARAM_INT));
+			$objQry = $utility->querySQL($sql, $params);
+			while ($row = $objQry->fetch(PDO::FETCH_OBJ)) {
+				if ($mdi_gmd_codigo == $row->gmd_codigo)
+					$aux = "selected='selected'";
+			    else
+					$aux = "";
+				echo "<option value='".$row->gmd_codigo."' ".$aux.">".$row->gmd_nome."</option>";
+            }
+		?>
+    </select>
+  </td>
+ </tr>
+
+ <tr>
+ <td align="left">
+    <label class="classlabel1">Unidade de Material Didático:&nbsp;</label>
+  	<select name="mdi_umd_codigo" id="mdi_umd_codigo" style="width:463px" class="selectform">
+		<option value="0" selected="selected"></option>
+		<?php
+			$CodigoPrefeitura = Utility::getCodigoPrefeitura();
+			$sql = "SELECT u.umd_codigo, u.umd_nome, u.umd_unidade FROM unidadesmateriaisdidaticos u
+					WHERE u.umd_pre_codigo = :CodigoPrefeitura
+					ORDER BY u.umd_nome";
+			$params = array();
+			array_push($params, array('name'=>'CodigoPrefeitura','value'=>$CodigoPrefeitura,'type'=>PDO::PARAM_INT));
+			$objQry = $utility->querySQL($sql, $params);
+			while ($row = $objQry->fetch(PDO::FETCH_OBJ)) {
+				if ($mdi_umd_codigo == $row->umd_codigo)
+					$aux = "selected='selected'";
+			    else
+					$aux = "";
+				echo "<option value='".$row->umd_codigo."' ".$aux.">".$row->umd_nome."(".$row->umd_unidade.")</option>";
+            }
+		?>
+    </select>
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+    <label class="classlabel1">Estoque:&nbsp;</label>
+  	<input type="text" maxlength="20" name="mdi_estoque" id="mdi_estoque" class="classinput1 newfloatmask" style="width:250px;text-align:right" value="<?php echo $mdi_estoque; ?>">
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+    <label class="classlabel1">Estoque Mínimo:&nbsp;</label>
+  	<input type="text" maxlength="20" name="mdi_estoqueminimo" id="mdi_estoqueminimo" class="classinput1 newfloatmask" style="width:250px;text-align:right" value="<?php echo $mdi_estoqueminimo; ?>">
+  </td>
+ </tr>
+
+ <tr>
+  <td align="left">
+    <label class="classlabel1">Indicação:&nbsp;</label>
+  	<input type="text" maxlength="50" name="mdi_indicacao" id="mdi_indicacao" class="classinput1" style="width:450px" value="<?php echo $mdi_indicacao; ?>">
+  </td>
+ </tr>
+
+</table>
+ <span class="spanasterisco1">* Campo obrigatório</span>
+</fieldset>
+<br/>
+
+<fieldset style="width:730px;" class="classfieldset1">
+   <legend class="classlegend1">Inf. do Cadastro</legend>
+
+ <table id="customers" border="0" style="background-color:#ebf5fe;width:98% !important">
+ <tr>
+	<td align="left" width="50%">
+		Cadastro:
+    </td>
+	<td align="left" width="50%">
+		Última Alteração:
+	</td>
+ </tr>
+ <tr>
+	<td align="left">
+		<?php $prefixo       = "mdi_";
+			  $usu_cadastro  = ${$prefixo."usu_cadastro"};
+		      $datacadastro  = ${$prefixo."datacadastro"};
+			  $usu_alteracao = ${$prefixo."usu_alteracao"};
+			  $dataalteracao = ${$prefixo."dataalteracao"};
+		?>
+	    <?php if (($usu_cadastro > 1) || (Utility::usuarioIsFuturize())) echo Utility::formataDataHora($datacadastro)."&nbsp;-&nbsp;".$utility->getNomeUsuario($usu_cadastro); else echo "&nbsp;"; ?>
+    </td>
+	<td align="left">
+	    <?php if (($usu_alteracao > 1) || (Utility::usuarioIsFuturize())) echo Utility::formataDataHora($dataalteracao)."&nbsp;-&nbsp;".$utility->getNomeUsuario($usu_alteracao); else echo "&nbsp;"; ?>
+    </td>
+ </tr>
+ </table>
+</fieldset>
+<br/>
+
+<?php global $BTNSALVARNOVO, $BTNSALVARSAIR, $BTNSALVAR; ?>
+<fieldset style="width:730px;" class="classfieldset1">
+ <table border="0" width="90%" cellspacing="10" cellpadding="0" align="center">
+ <tr>
+  <td align="center">
+   <input type="submit" name="salvarnovo" id="btnsalvarnovowait" value="<?php echo $BTNSALVARNOVO; ?>" style="width:130px;cursor:pointer;" class="ui-widget btn1 btnblue1"/>
+  </td>
+  <td align="center">
+   <input type="submit" name="salvarsair" id="btnsalvarsairwait" value="<?php echo $BTNSALVARSAIR; ?>" style="width:130px;cursor:pointer;" class="ui-widget btn1 btnblue1"/>
+  </td>
+  <td align="center">
+   <input type="submit" name="salvar" id="btnsalvarwait" value="<?php echo $BTNSALVAR; ?>" style="width:130px;cursor:pointer;" class="ui-widget btn1 btnblue1"/>
+  </td>
+   <td align="center">
+   <input type="button" name="cancelar" id="btncancelarwait" style="width:130px;cursor:pointer;" onClick="document.getElementById('btnsalvarnovowait').disabled=true;document.getElementById('btnsalvarsairwait').disabled=true;document.getElementById('btnsalvarwait').disabled=true;document.getElementById('btncancelarwait').disabled=true;document.getElementById('btncancelarwait').value='Aguarde...';location.href='<?php echo $cad->arqlis; ?>?acao=localizar&filtro=S'" value="Cancelar" class="ui-widget btn1 btnblue1"/>
+  </td>
+ </tr>
+</table>
+</fieldset>
+</form>
+
+</div>
+</div>
+
+<?php //require_once "emcasoduvidas.php"; ?>
+
+	  </div><!-- margemInterna -->
+	</div><!-- coluna22 -->
+
+</div><!-- conteudo -->
+
+	<!-- rodape -->
+    <div id="rodape" class="textos">
+		<?php require_once "rodape.php"; ?>
+    </div>
+
+</div><!-- tudo -->
+</div><!-- principal -->
+</body>
+</html>
+<?php
+	require_once "fimblocopadrao.php";
+?>
